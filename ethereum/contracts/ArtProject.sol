@@ -7,14 +7,21 @@ contract ArtProject {
         address[] recipients;
     }
 
-    address public immutable administrator;
+    error isNotAdministrator();
+
+    address public immutable i_administrator;
     Pool[] public pools;
 
     constructor() {
-        administrator = msg.sender;
+        i_administrator = msg.sender;
     }
 
-    function addPool(string memory name) public {
+    modifier restrictedToAdministrator() {
+        if (msg.sender != i_administrator) { revert isNotAdministrator(); }
+        _;
+    }
+
+    function addPool(string memory name) public restrictedToAdministrator {
         address[] memory recipients;
         pools.push(Pool(name, recipients));
     }
