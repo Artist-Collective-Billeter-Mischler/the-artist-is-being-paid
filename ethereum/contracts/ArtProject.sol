@@ -14,7 +14,6 @@ contract ArtProject {
 
     struct Beneficiary {
         address account;
-        uint basisPoints;
     }
 
     error alreadyExists(string , address);
@@ -97,6 +96,13 @@ contract ArtProject {
         remainingBasisPoints = TOTAL_BASIS_POINTS - assignedBasisPoints;
         account = pool.accounts[pool.accounts.length - 1];
         distributionKey[account] += remainingBasisPoints;
+    }
+
+    function donate() public payable {
+        for (uint index = 0; index < accounts.length ; index ++) {
+            address account = accounts[index];
+            payable(account).transfer(msg.value / TOTAL_BASIS_POINTS * distributionKey[account]);
+        }
     }
 
     function getDistriptionKey() public view returns (address[] memory, uint[] memory) {
