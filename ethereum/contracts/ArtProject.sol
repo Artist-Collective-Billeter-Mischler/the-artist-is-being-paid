@@ -2,11 +2,14 @@
 pragma solidity ^0.8.22;
 
 contract ArtProject {
+    uint constant TOTAL_BASIS_POINTS = 10000;
+
     struct Pool {
+        address[] accounts;
+        uint basisPoints;
+        mapping(address => Beneficiary) beneficiaries;
         bool exists;
         string name;
-        mapping(address => Beneficiary) beneficiaries;
-        uint numberOfBeneficiaries;
     }
 
     struct Beneficiary {
@@ -20,8 +23,12 @@ contract ArtProject {
 
     address public immutable i_administrator;
 
-    mapping(address => bool) public accounts;
+    address[] public accounts;
+    mapping(address => uint) public distributionKey;
+    mapping(address => bool) public existingAccounts;
+    string[] public poolNames;
     mapping(string => Pool) public pools;
+    string public residualDonationsPoolName;
 
     constructor() {
         i_administrator = msg.sender;
@@ -32,20 +39,85 @@ contract ArtProject {
         _;
     }
 
-    function addPool(string memory name) public restrictedToAdministrator {
-        if (pools[name].exists) { revert alreadyExists(string.concat("pool """, name, """"), address(0)); }
-        pools[name].exists = true;
-        pools[name].name = name;
-    }
-
     function addBeneficiaryToPool(address account, string memory name) public restrictedToAdministrator {
         if (!pools[name].exists) { revert doesNotExist(name); }
-        if (accounts[account]) { revert alreadyExists("beneficiary", account); }
-        accounts[account] = true;
+        if (existingAccounts[account]) { revert alreadyExists("beneficiary", account); }
+
+        accounts.push(account);
+        existingAccounts[account] = true;
 
         Beneficiary memory beneficiary;
         beneficiary.account = account;
+        pools[name].accounts.push(account);
         pools[name].beneficiaries[account] = beneficiary;
-        pools[name].numberOfBeneficiaries++;
+    }
+
+    function addPool(string memory name, uint basisPoints) public restrictedToAdministrator {
+        Pool storage pool;
+
+        if (pools[name].exists) { revert alreadyExists(string.concat("pool: ", name), address(0)); }
+
+        poolNames.push(name);
+        
+        pool = pools[name];
+        pool.exists = true;
+        pool.name = name;
+        pool.basisPoints = basisPoints;
+
+        if (basisPoints == 0) {
+            residualDonationsPoolName = name;
+        }
+    }
+
+    function calculateDistributionKey() public restrictedToAdministrator {
+        address account;
+        uint assignedBasisPoints;
+        Pool storage pool;
+        uint remainingBasisPoints;
+
+        for (uint poolIndex = 0;  poolIndex < poolNames.length; poolIndex ++) {
+            assignedBasisPoints += pools[poolNames[poolIndex]].basisPoints;
+        }
+
+        remainingBasisPoints = TOTAL_BASIS_POINTS - assignedBasisPoints;
+        assignedBasisPoints = 0;
+
+        for (uint poolIndex = 0; poolIndex < poolNames.length; poolIndex++) {
+            pool = pools[poolNames[poolIndex]];
+
+            if (keccak256(bytes(pool.name)) == keccak256(bytes(residualDonationsPoolName))) { continue; }
+
+            assignedBasisPoints += updateDistributionKey(pool, pool.basisPoints / pool.accounts.length);
+        }
+
+        pool = pools[residualDonationsPoolName];
+        remainingBasisPoints = TOTAL_BASIS_POINTS - assignedBasisPoints;
+        assignedBasisPoints += updateDistributionKey(pool, remainingBasisPoints / pool.accounts.length);
+
+        remainingBasisPoints = TOTAL_BASIS_POINTS - assignedBasisPoints;
+        account = pool.accounts[pool.accounts.length - 1];
+        distributionKey[account] += remainingBasisPoints;
+    }
+
+    function getDistriptionKey() public view returns (address[] memory, uint[] memory) {
+        uint[] memory basisPoints = new uint[](accounts.length);
+
+        for (uint index = 0; index < accounts.length; index++) {
+            basisPoints[index] = distributionKey[accounts[index]];
+        }
+
+        return (accounts, basisPoints);
+    }
+
+    function updateDistributionKey(Pool storage pool, uint basisPoints) private returns (uint) {
+        uint assignedBasisPoints;
+
+        for (uint beneficiaryIndex = 0; beneficiaryIndex < pool.accounts.length; beneficiaryIndex++) {
+            address account = pool.accounts[beneficiaryIndex];
+            distributionKey[account] = basisPoints;
+            assignedBasisPoints += basisPoints;
+        }
+
+        return assignedBasisPoints;
     }
 }
