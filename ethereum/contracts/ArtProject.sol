@@ -4,16 +4,16 @@ pragma solidity ^0.8.22;
 contract ArtProject {
     uint constant TOTAL_BASIS_POINTS = 10000;
 
+    struct Beneficiary {
+        address account;
+    }
+
     struct Pool {
         address[] accounts;
         uint basisPoints;
         mapping(address => Beneficiary) beneficiaries;
         bool exists;
         string name;
-    }
-
-    struct Beneficiary {
-        address account;
     }
 
     error alreadyExists(string , address);
